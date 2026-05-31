@@ -9,7 +9,7 @@ defineEmits(['toggle-chat'])
 const store = useWorkflowStore()
 
 async function handleRun() {
-  await store.runWorkflow(store.selectedNode)
+  await store.runWorkflow()
 }
 
 function handleSave() {

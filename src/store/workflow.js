@@ -95,7 +95,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   }
 
   function setSelectedNode(id) {
-    selectedNode.value = id
+    selectedNode.value = id?.id || id
   }
 
   function persist() {
@@ -164,8 +164,9 @@ export const useWorkflowStore = defineStore('workflow', () => {
     return configs[model] || configs.deepseek
   }
 
-  async function runWorkflow(fromNodeId) {
-    const node = nodes.value.find(n => n.id === fromNodeId)
+  async function runWorkflow(fromNodeId = selectedNode.value) {
+    const nodeId = fromNodeId?.id || fromNodeId
+    const node = nodes.value.find(n => n.id === nodeId)
     if (!node) {
       error.value = 'Select a node to run'
       return
