@@ -1,11 +1,9 @@
 <script setup>
-import { markRaw, ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { markRaw, ref, computed, onMounted, onUnmounted } from 'vue'
 import { VueFlow, useVueFlow } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
-import '@vue-flow/controls/dist/style.css'
 import Topbar from '../components/layout/Topbar.vue'
 import LeftSidebar from '../components/panels/LeftSidebar.vue'
 import RightPanel from '../components/panels/RightPanel.vue'
@@ -123,10 +121,6 @@ function onKeyDown(event) {
   }
 }
 
-watch(() => store.selectedNode, (id) => {
-  if (!id && !showChat.value) showChat.value = true
-})
-
 onMounted(() => {
   store.load()
   document.addEventListener('keydown', onKeyDown)
@@ -155,6 +149,12 @@ onUnmounted(() => {
           :max-zoom="3"
           :snap-to-grid="true"
           :snap-grid="[20, 20]"
+          :nodes-draggable="!canvasLocked"
+          :nodes-connectable="!canvasLocked"
+          :edges-updatable="!canvasLocked"
+          :elements-selectable="!canvasLocked"
+          :pan-on-drag="!canvasLocked"
+          :zoom-on-scroll="!canvasLocked"
           @connect="onConnect"
           @node-click="onNodeClick"
           @pane-click="onPaneClick"
@@ -164,7 +164,8 @@ onUnmounted(() => {
           @viewport-change="onViewportChange"
           class="vue-flow-instance"
         >
-        
+          <Background />
+
           <template #node-input="props">
             <InputNode v-bind="props" />
           </template>
@@ -228,36 +229,6 @@ onUnmounted(() => {
 </style>
 
 <style>
-.vue-flow__controls {
-  display: flex;
-  gap: 4px;
-  background: var(--bg-surface) !important;
-  border: 1px solid var(--border-color) !important;
-  border-radius: var(--radius-md) !important;
-  padding: 4px;
-  box-shadow: var(--shadow-md);
-}
-
-.vue-flow__controls-button {
-  background: transparent !important;
-  border: none !important;
-  color: var(--text-secondary) !important;
-  width: 28px !important;
-  height: 28px !important;
-  border-radius: var(--radius-sm) !important;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.vue-flow__controls-button:hover {
-  background: var(--bg-elevated) !important;
-  color: var(--text-primary) !important;
-}
-
-.vue-flow__controls-button svg {
-  fill: currentColor !important;
-}
-
 .vue-flow__edge-path {
   stroke: #6366f1 !important;
   stroke-width: 2 !important;

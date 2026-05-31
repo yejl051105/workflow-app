@@ -28,9 +28,13 @@ function selectNode() {
       <span class="node-label">{{ data.label }}</span>
     </div>
     <div class="node-body">
+      <!-- 如果ai返回了数据 -->
       <div v-if="data.output" class="rendered-content" v-html="rendered" />
+      <!-- 如果ai还没返回数据 -->
       <div v-else class="empty-hint">
+        <!-- 进行workFlow中 -->
         <span v-if="store.workflowStatus === 'running'" class="streaming-dots">Receiving<dot>.</dot><dot>.</dot><dot>.</dot></span>
+        <!-- 没有进行run workLFlow -->
         <span v-else>Waiting for output...</span>
       </div>
     </div>

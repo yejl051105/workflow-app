@@ -2,21 +2,14 @@
 import { ElMessage } from 'element-plus'
 import { VideoPlay, Check, Delete, WarningFilled, ChatLineSquare } from '@element-plus/icons-vue'
 import { useWorkflowStore } from '../../store/workflow'
-import { useWorkflow } from '../../composables/useWorkflow'
 
-const props = defineProps({ showChat: Boolean })
+defineProps({ showChat: Boolean })
 defineEmits(['toggle-chat'])
 
 const store = useWorkflowStore()
-const { canRun } = useWorkflow()
 
 async function handleRun() {
-  const validation = store.validateWorkflow()
-  if (!validation.valid) {
-    ElMessage.warning(validation.message)
-    return
-  }
-  await store.runWorkflow()
+  await store.runWorkflow(store.selectedNode)
 }
 
 function handleSave() {
@@ -51,6 +44,7 @@ function handleClear() {
         <el-icon><WarningFilled /></el-icon>
         <span>{{ store.error }}</span>
       </div>
+
       <el-button
         type="primary"
         :icon="VideoPlay"

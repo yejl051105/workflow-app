@@ -1,5 +1,5 @@
 <script setup>
-import { ref, nextTick, computed } from 'vue'
+import { ref, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Close, Plus, Promotion } from '@element-plus/icons-vue'
 import { useWorkflowStore } from '../../../store/workflow'
@@ -14,10 +14,8 @@ const inputText = ref('')
 const loading = ref(false)
 const messages = ref([])
 const panelWidth = ref(380)
-const resizing = ref(false)
 
 function startResize(e) {
-  resizing.value = true
   document.body.style.cursor = 'ew-resize'
   document.body.style.userSelect = 'none'
   const startX = e.clientX
@@ -29,7 +27,6 @@ function startResize(e) {
   }
 
   function onUp() {
-    resizing.value = false
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
     document.removeEventListener('mousemove', onMove)
@@ -99,7 +96,6 @@ async function sendMessage(text) {
           role: m.role === 'assistant' ? 'assistant' : 'user',
           content: m.aiContent || m.content,
         })),
-      { role: 'user', content },
     ]
 
     const response = await fetch(api.url, {
@@ -122,7 +118,7 @@ async function sendMessage(text) {
       if (jsonMatch) {
         workflow = JSON.parse(jsonMatch[0])
         if (workflow.nodes && workflow.nodes.length > 0) {
-          displayText = `✅ I've generated a workflow for you!`
+          displayText = `I've generated a workflow for you.`
         }
       }
     } catch { }
@@ -141,7 +137,7 @@ async function sendMessage(text) {
     messages.value.push({
       role: 'assistant',
       content: `Error: ${err.message}`,
-      rendered: `**Error:** ${err.message}`,
+      rendered: renderMarkdown(`**Error:** ${err.message}`),
     })
     scrollToBottom()
   } finally {
@@ -152,7 +148,7 @@ async function sendMessage(text) {
 function applyWorkflow(workflow) {
   store.applyWorkflowJson(workflow)
   emit('close')
-  ElMessage.success('Workflow applied to canvas!')
+  ElMessage.success('Workflow applied to flow!')
 }
 </script>
 
@@ -161,76 +157,56 @@ function applyWorkflow(workflow) {
     <div class="chat-panel">
       <div class="resize-handle" @mousedown="startResize" />
       <div class="chat-header">
-      <h3>AI Assistant</h3>
-      <el-button text class="close-btn" @click="$emit('close')">
-        <el-icon><Close /></el-icon>
-      </el-button>
-    </div>
+        <h3>AI Assistant</h3>
+        <el-button text class="close-btn" @click="$emit('close')">
+          <el-icon>
+            <Close />
+          </el-icon>
+        </el-button>
+      </div>
 
-    <div class="chat-messages" ref="messagesRef">
-      <div v-if="messages.length === 0" class="welcome">
-        <div class="welcome-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+      <div class="chat-messages" ref="messagesRef">
+        <div v-if="messages.length === 0" class="welcome">
+          <div class="welcome-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+              <path d="M2 17l10 5 10-5" />
+              <path d="M2 12l10 5 10-5" />
+            </svg>
+          </div>
+          <p class="welcome-title">AI Workflow Assistant</p>
+          <p class="welcome-desc">Describe the workflow you want, and I'll build it for you.</p>
+          <div class="suggestions">
+            <button v-for="s in suggestions" :key="s" class="suggestion-chip" @click="sendMessage(s)">
+              {{ s }}
+            </button>
+          </div>
         </div>
-        <p class="welcome-title">AI Workflow Assistant</p>
-        <p class="welcome-desc">Describe the workflow you want, and I'll build it for you.</p>
-        <div class="suggestions">
-          <button
-            v-for="s in suggestions"
-            :key="s"
-            class="suggestion-chip"
-            @click="sendMessage(s)"
-          >
-            {{ s }}
-          </button>
+
+        <div v-for="(msg, i) in messages" :key="i" class="message" :class="msg.role">
+          <div class="msg-content" v-if="msg.role === 'user'">{{ msg.content }}</div>
+          <div class="msg-content ai" v-else v-html="msg.rendered" />
+          <div v-if="msg.workflow" class="workflow-actions">
+            <el-button type="primary" size="small" :icon="Plus" @click="applyWorkflow(msg.workflow)">
+              Apply to Canvas
+            </el-button>
+          </div>
+        </div>
+
+        <div v-if="loading" class="message assistant">
+          <div class="typing">
+            <span class="dot" /><span class="dot" /><span class="dot" />
+          </div>
         </div>
       </div>
 
-      <div
-        v-for="(msg, i) in messages"
-        :key="i"
-        class="message"
-        :class="msg.role"
-      >
-        <div class="msg-content" v-if="msg.role === 'user'">{{ msg.content }}</div>
-        <div class="msg-content ai" v-else v-html="msg.rendered" />
-        <div v-if="msg.workflow" class="workflow-actions">
-          <el-button type="primary" size="small" :icon="Plus" @click="applyWorkflow(msg.workflow)">
-            Apply to Canvas
-          </el-button>
-        </div>
-      </div>
-
-      <div v-if="loading" class="message assistant">
-        <div class="typing">
-          <span class="dot" /><span class="dot" /><span class="dot" />
-        </div>
+      <div class="chat-input">
+        <el-input v-model="inputText" type="textarea" :rows="2" :disabled="loading"
+          placeholder="Describe your workflow..." @keydown.enter.prevent="!$event.isComposing && sendMessage()" />
+        <el-button type="primary" :icon="Promotion" :loading="loading" :disabled="!inputText.trim()"
+          @click="sendMessage()" class="send-btn" />
       </div>
     </div>
-
-    <div class="chat-input">
-      <el-input
-        v-model="inputText"
-        type="textarea"
-        :rows="2"
-        :disabled="loading"
-        placeholder="Describe your workflow..."
-        @keydown.enter.prevent="!$event.isComposing && sendMessage()"
-      />
-      <el-button
-        type="primary"
-        :icon="Promotion"
-        :loading="loading"
-        :disabled="!inputText.trim()"
-        @click="sendMessage()"
-        class="send-btn"
-      />
-    </div>
-  </div>
   </div>
 </template>
 
@@ -382,16 +358,21 @@ function applyWorkflow(workflow) {
   border-bottom-left-radius: 4px;
 }
 
-.msg-content.ai :deep(p) { margin: 4px 0; }
+.msg-content.ai :deep(p) {
+  margin: 4px 0;
+}
+
 .msg-content.ai :deep(code) {
   font-family: var(--font-mono);
   font-size: 12px;
 }
+
 .msg-content.ai :deep(:not(pre) > code) {
   background: rgba(99, 102, 241, 0.12);
   padding: 1px 4px;
   border-radius: 3px;
 }
+
 .msg-content.ai :deep(pre) {
   margin: 6px 0;
   padding: 8px 10px;
@@ -422,12 +403,25 @@ function applyWorkflow(workflow) {
   animation: bounce 1.4s infinite both;
 }
 
-.dot:nth-child(2) { animation-delay: 0.16s; }
-.dot:nth-child(3) { animation-delay: 0.32s; }
+.dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
 
 @keyframes bounce {
-  0%, 80%, 100% { transform: translateY(0); }
-  40% { transform: translateY(-6px); }
+
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+
+  40% {
+    transform: translateY(-6px);
+  }
 }
 
 .chat-input {

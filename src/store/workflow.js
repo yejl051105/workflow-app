@@ -1,9 +1,33 @@
 import { defineStore } from 'pinia'
-import { ref, computed, watch } from 'vue'
+import { ref } from 'vue'
 import { loadWorkflow, saveWorkflow, clearWorkflow } from '../utils/storage'
 import { WORKFLOW_STATUS } from '../utils/constants'
 
 let nodeCounter = 0
+const DEFAULT_MODEL = 'deepseek'
+const DEFAULT_TEMPERATURE = 0.7
+const NODE_WIDTHS = {
+  input: 160,
+  prompt: 180,
+  output: 160,
+}
+
+function getDefaultNodeData(type, zoom = 0.5) {
+  const zoomFactor = Math.max(zoom, 0.1)
+  const nodeWidth = Math.round((NODE_WIDTHS[type] || 160) / zoomFactor)
+
+  const defaults = {
+    input: { label: 'Input', text: '' },
+    prompt: { label: 'Prompt', prompt: '', model: DEFAULT_MODEL, temperature: DEFAULT_TEMPERATURE },
+    output: { label: 'Output', output: '' },
+  }
+
+  return { ...defaults[type], nodeWidth }
+}
+
+function getNodeLabel(type) {
+  return type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Node'
+}
 
 export const useWorkflowStore = defineStore('workflow', () => {
   const nodes = ref([])
@@ -12,10 +36,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   const isRunning = ref(false)
   const workflowStatus = ref(WORKFLOW_STATUS.IDLE)
   const error = ref(null)
-  const selectedNodeData = computed(() => {
-    if (!selectedNode.value) return null
-    return nodes.value.find(n => n.id === selectedNode.value) || null
-  })
+  const currentWorkflowId = ref(crypto.randomUUID())
 
   function generateId(type) {
     nodeCounter++
@@ -24,23 +45,17 @@ export const useWorkflowStore = defineStore('workflow', () => {
 
   function addNode(type, position, zoom = 1) {
     const id = generateId(type)
-    const node = { id, type, position: { x: position.x, y: position.y } }
-    const zoomFactor = Math.max(zoom, 0.1)
-
-    switch (type) {
-      case 'input':
-        node.data = { label: 'Input', text: '', nodeWidth: Math.round(160 / zoomFactor) }
-        break
-      case 'prompt':
-        node.data = { label: 'Prompt', prompt: '', model: 'deepseek', temperature: 0.7, nodeWidth: Math.round(180 / zoomFactor) }
-        break
-      case 'output':
-        node.data = { label: 'Output', output: '', nodeWidth: Math.round(160 / zoomFactor) }
-        break
+    const node = {
+      id,
+      type,
+      workflowId: currentWorkflowId.value,
+      position: { x: position.x, y: position.y },
+      data: getDefaultNodeData(type, zoom),
     }
 
     nodes.value.push(node)
     setSelectedNode(id)
+    persist()
     return id
   }
 
@@ -70,7 +85,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
   function addEdge(edge) {
     const exists = edges.value.some(e => e.source === edge.source && e.target === edge.target)
     if (exists) return
-    edges.value.push(edge)
+    edges.value.push({ ...edge, workflowId: currentWorkflowId.value })
     persist()
   }
 
@@ -90,13 +105,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
   function load() {
     const data = loadWorkflow()
     if (data) {
+      const wfId = crypto.randomUUID()
       nodes.value = (data.nodes || []).map(n => {
-        if (!n.data.nodeWidth) {
-          n.data.nodeWidth = n.type === 'prompt' ? 180 : 160
+        const defaults = getDefaultNodeData(n.type)
+        return {
+          ...n,
+          workflowId: n.workflowId || wfId,
+          data: { ...defaults, ...n.data, nodeWidth: n.data?.nodeWidth || defaults.nodeWidth },
         }
-        return n
       })
-      edges.value = data.edges || []
+      edges.value = (data.edges || []).map(e => ({
+        ...e,
+        workflowId: e.workflowId || wfId,
+      }))
     }
   }
 
@@ -107,62 +128,67 @@ export const useWorkflowStore = defineStore('workflow', () => {
     workflowStatus.value = WORKFLOW_STATUS.IDLE
     error.value = null
     isRunning.value = false
+    currentWorkflowId.value = crypto.randomUUID()
     clearWorkflow()
   }
 
-  function getWorkflowChain() {
-    const sorted = []
-    let current = nodes.value.find(n => n.type === 'input')
+  function getWorkflowChain(workflowId) {
+    const workflowNodes = nodes.value.filter(n => n.workflowId === workflowId)
+    const workflowEdges = edges.value.filter(e => e.workflowId === workflowId)
 
-    while (current) {
-      sorted.push(current)
-      const edge = edges.value.find(e => e.source === current.id)
-      if (!edge) break
-      current = nodes.value.find(n => n.id === edge.target)
+    const start = workflowNodes.find(n => n.type === 'input')
+    if (!start) return []
+
+    const chain = []
+    let current = start
+    const visited = new Set()
+
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id)
+      chain.push(current)
+      const edge = workflowEdges.find(e => e.source === current.id)
+      current = edge ? workflowNodes.find(n => n.id === edge.target) : null
     }
 
-    return sorted
-  }
-
-  function validateWorkflow() {
-    const inputNode = nodes.value.find(n => n.type === 'input')
-    if (!inputNode) return { valid: false, message: 'Missing Input node' }
-
-    const promptNode = nodes.value.find(n => n.type === 'prompt')
-    if (!promptNode) return { valid: false, message: 'Missing Prompt node' }
-
-    const outputNode = nodes.value.find(n => n.type === 'output')
-    if (!outputNode) return { valid: false, message: 'Missing Output node' }
-
-    const inputEdge = edges.value.find(e => e.source === inputNode.id)
-    const promptEdge = edges.value.find(e => e.source === promptNode.id)
-
-    if (!inputEdge || inputEdge.target !== promptNode.id) {
-      return { valid: false, message: 'Input must connect to Prompt' }
-    }
-
-    if (!promptEdge || promptEdge.target !== outputNode.id) {
-      return { valid: false, message: 'Prompt must connect to Output' }
-    }
-
-    return { valid: true, message: '' }
+    return chain
   }
 
   function getApiConfig(model) {
     const configs = {
       deepseek: {
         url: import.meta.env.VITE_DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions',
-        key: import.meta.env.VITE_DEEPSEEK_KEY || 'sk-9757451f7c254b879fceda9e18836a63',
-        model: 'deepseek-chat',
+        key: import.meta.env.VITE_DEEPSEEK_KEY || '',
+        model: 'deepseek-v4-flash',
       },
     }
     return configs[model] || configs.deepseek
   }
 
-  async function runWorkflow() {
-    const validation = validateWorkflow()
-    if (!validation.valid) {
-      error.value = validation.message
+  async function runWorkflow(fromNodeId) {
+    const node = nodes.value.find(n => n.id === fromNodeId)
+    if (!node) {
+      error.value = 'Select a node to run'
+      return
+    }
+    const chain = getWorkflowChain(node.workflowId)
+
+    const inputIndex = chain.findIndex(n => n.type === 'input')
+    const promptIndex = chain.findIndex((n, index) => index > inputIndex && n.type === 'prompt')
+    const outputIndex = chain.findIndex((n, index) => index > promptIndex && n.type === 'output')
+    const inputNode = chain[inputIndex]
+    const promptNode = chain[promptIndex]
+    const outputNode = chain[outputIndex]
+
+    if (!inputNode) {
+      error.value = 'Select a node in a chain that has an Input node connected'
+      return
+    }
+    if (!promptNode) {
+      error.value = 'Connect Input to a Prompt node before running'
+      return
+    }
+    if (!outputNode) {
+      error.value = 'Connect Prompt to an Output node before running'
       return
     }
 
@@ -170,19 +196,16 @@ export const useWorkflowStore = defineStore('workflow', () => {
     isRunning.value = true
     error.value = null
 
-    const outputNode = nodes.value.find(n => n.type === 'output')
-    if (outputNode) outputNode.data.output = ''
+    outputNode.data.output = ''
 
     try {
-      const inputNode = nodes.value.find(n => n.type === 'input')
-      const promptNode = nodes.value.find(n => n.type === 'prompt')
-      const text = inputNode?.data?.text || ''
-      const prompt = promptNode?.data?.prompt || ''
-      const model = promptNode?.data?.model || 'deepseek'
-      const temperature = promptNode?.data?.temperature || 0.7
+      const text = inputNode.data?.text || ''
+      const prompt = promptNode.data?.prompt || ''
+      const model = promptNode.data?.model || DEFAULT_MODEL
+      const temperature = promptNode.data?.temperature ?? DEFAULT_TEMPERATURE
 
-      if (!text.trim()) throw new Error('Input node text is empty. Type something in Input > Input Text')
-      if (!prompt.trim()) throw new Error('Prompt node is empty. Click the Prompt node and fill in System Prompt')
+      if (!text.trim()) throw new Error('Input node text is empty')
+      if (!prompt.trim()) throw new Error('Prompt node is empty')
 
       const api = getApiConfig(model)
       if (!api.key) throw new Error(`API key not configured for ${model}. Set VITE_${model.toUpperCase()}_KEY in .env`)
@@ -216,19 +239,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
         const { done, value } = await reader.read()
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        const rawText = decoder.decode(value, { stream: true })
+        buffer += rawText
+        const textArray = buffer.split('\n\n')
+        buffer = textArray.pop()
 
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
-          const data = trimmed.slice(6)
-          if (data === '[DONE]') continue
+        for (const m of textArray) {
+          const dataStr = m.replace('data:', '').trim()
+          if (dataStr === '[DONE]') break
+
           try {
-            const parsed = JSON.parse(data)
-            const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || ''
-            if (content && outputNode) {
+            const data = JSON.parse(dataStr)
+            const content = data.choices?.[0]?.delta?.content || ''
+            if (content) {
               outputNode.data.output += content
             }
           } catch { }
@@ -245,20 +268,23 @@ export const useWorkflowStore = defineStore('workflow', () => {
     }
   }
 
-  function applyWorkflowJson(workflow, zoom = 1) {
+  function applyWorkflowJson(workflow, zoom = 0.5) {
     const nodeMap = {}
-    const zoomFactor = Math.max(zoom, 0.1)
+    const wfId = crypto.randomUUID()
 
     for (const n of (workflow.nodes || [])) {
       const id = generateId(n.type)
-      const data = { ...n.data, label: n.data.label || n.type.charAt(0).toUpperCase() + n.type.slice(1) }
-      if (!data.nodeWidth) {
-        data.nodeWidth = Math.round((n.type === 'prompt' ? 180 : 160) / zoomFactor)
+      const data = {
+        ...getDefaultNodeData(n.type, zoom),
+        ...n.data,
+        label: n.data?.label || getNodeLabel(n.type),
       }
+
       nodes.value.push({
         id,
         type: n.type,
-        position: { x: n.position.x, y: n.position.y },
+        workflowId: wfId,
+        position: { x: n.position?.x || 0, y: n.position?.y || 0 },
         data,
       })
       nodeMap[n.id] = id
@@ -272,6 +298,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
           id: `e-${source}-${target}`,
           source,
           target,
+          workflowId: wfId,
         })
       }
     }
@@ -279,16 +306,16 @@ export const useWorkflowStore = defineStore('workflow', () => {
     persist()
   }
 
-  watch([nodes, edges], () => {
-    persist()
-  }, { deep: true })
+  function setWorkflowId(id) {
+    currentWorkflowId.value = id
+  }
 
   return {
-    nodes, edges, selectedNode, selectedNodeData,
-    isRunning, workflowStatus, error,
+    nodes, edges, selectedNode,
+    isRunning, workflowStatus, error, currentWorkflowId,
     addNode, removeNode, updateNode, updateNodePosition,
     addEdge, removeEdge, setSelectedNode,
-    persist, load, reset, getWorkflowChain, validateWorkflow,
-    runWorkflow, applyWorkflowJson, getApiConfig,
+    persist, load, reset, getWorkflowChain,
+    runWorkflow, applyWorkflowJson, getApiConfig, setWorkflowId,
   }
 })

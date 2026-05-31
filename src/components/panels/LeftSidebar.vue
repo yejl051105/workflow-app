@@ -2,9 +2,9 @@
 import { Document, ChatLineSquare, Monitor } from '@element-plus/icons-vue'
 
 const nodeTypes = [
-  { type: 'input', label: 'Input', icon: Document, description: 'User input text', color: '#22c55e' },
-  { type: 'prompt', label: 'Prompt', icon: ChatLineSquare, description: 'AI prompt config', color: '#6366f1' },
-  { type: 'output', label: 'Output', icon: Monitor, description: 'AI output display', color: '#f59e0b' }
+  { type: 'input', label: 'Input', icon: Document, description: 'User input text' },
+  { type: 'prompt', label: 'Prompt', icon: ChatLineSquare, description: 'AI prompt config' },
+  { type: 'output', label: 'Output', icon: Monitor, description: 'AI output display' }
 ]
 
 function onDragStart(event, node) {
