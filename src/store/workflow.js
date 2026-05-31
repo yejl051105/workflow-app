@@ -43,7 +43,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     return `${type}-${Date.now()}-${nodeCounter}`
   }
 
-  function addNode(type, position, zoom = 1) {
+  function addNode(type, position, zoom = 0.5) {
     const id = generateId(type)
     const node = {
       id,
@@ -157,7 +157,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const configs = {
       deepseek: {
         url: import.meta.env.VITE_DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions',
-        key: import.meta.env.VITE_DEEPSEEK_KEY || '',
+        key: import.meta.env.VITE_DEEPSEEK_KEY || 'sk-9757451f7c254b879fceda9e18836a63',
         model: 'deepseek-v4-flash',
       },
     }
