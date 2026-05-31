@@ -91,50 +91,28 @@ async function sendMessage(text) {
       throw new Error('Please set VITE_DEEPSEEK_KEY in .env to use the AI assistant')
     }
 
-    let reply
-
-    if (api.provider === 'gemini') {
-      const url = api.url || `https://generativelanguage.googleapis.com/v1beta/models/${api.model}:generateContent?key=${api.key}`
-      const contents = messages.value
+    const chatMessages = [
+      { role: 'system', content: WORKFLOW_SYSTEM_PROMPT },
+      ...messages.value
         .filter(m => m.role === 'user' || m.aiContent)
         .map(m => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.aiContent || m.content }],
-        }))
-      contents.push({ role: 'user', parts: [{ text: `${WORKFLOW_SYSTEM_PROMPT}\n\nUser request: ${content}` }] })
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.aiContent || m.content,
+        })),
+      { role: 'user', content },
+    ]
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents, generationConfig: { temperature: 0.2 } }),
-      })
-      if (!response.ok) throw new Error(`Gemini API error: ${response.status}`)
-      const data = await response.json()
-      reply = data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || ''
-    } else {
-      const chatMessages = [
-        { role: 'system', content: WORKFLOW_SYSTEM_PROMPT },
-        ...messages.value
-          .filter(m => m.role === 'user' || m.aiContent)
-          .map(m => ({
-            role: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.aiContent || m.content,
-          })),
-        { role: 'user', content },
-      ]
-
-      const response = await fetch(api.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${api.key}`,
-        },
-        body: JSON.stringify({ model: api.model, messages: chatMessages, temperature: 0.2 }),
-      })
-      if (!response.ok) throw new Error(`API error: ${response.status}`)
-      const data = await response.json()
-      reply = data.choices?.[0]?.message?.content || ''
-    }
+    const response = await fetch(api.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${api.key}`,
+      },
+      body: JSON.stringify({ model: api.model, messages: chatMessages, temperature: 0.2 }),
+    })
+    if (!response.ok) throw new Error(`API error: ${response.status}`)
+    const data = await response.json()
+    const reply = data.choices?.[0]?.message?.content || ''
 
     let workflow = null
     let displayText = reply

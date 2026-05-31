@@ -92,7 +92,6 @@ async function handleDelete() {
               <label>Model</label>
               <el-select v-model="localData.model" @change="updateNodeData">
                 <el-option label="DeepSeek" value="deepseek" />
-                <el-option label="Gemini" value="gemini" />
               </el-select>
             </div>
             <div class="config-field">

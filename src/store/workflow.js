@@ -152,15 +152,8 @@ export const useWorkflowStore = defineStore('workflow', () => {
     const configs = {
       deepseek: {
         url: import.meta.env.VITE_DEEPSEEK_URL || 'https://api.deepseek.com/chat/completions',
-        key: import.meta.env.VITE_DEEPSEEK_KEY || '',
+        key: import.meta.env.VITE_DEEPSEEK_KEY || 'sk-9757451f7c254b879fceda9e18836a63',
         model: 'deepseek-chat',
-        provider: 'openai',
-      },
-      gemini: {
-        url: import.meta.env.VITE_GEMINI_URL || '',
-        key: import.meta.env.VITE_GEMINI_KEY || '',
-        model: 'gemini-2.0-flash',
-        provider: 'gemini',
       },
     }
     return configs[model] || configs.deepseek
@@ -194,43 +187,19 @@ export const useWorkflowStore = defineStore('workflow', () => {
       const api = getApiConfig(model)
       if (!api.key) throw new Error(`API key not configured for ${model}. Set VITE_${model.toUpperCase()}_KEY in .env`)
 
-      let url, body, parseChunk
-
-      if (api.provider === 'gemini') {
-        url = api.url || `https://generativelanguage.googleapis.com/v1beta/models/${api.model}:streamGenerateContent?alt=sse&key=${api.key}`
-        body = {
-          contents: [
-            { role: 'user', parts: [{ text: `System instruction: ${prompt}\n\nUser: ${text}` }] },
-          ],
-          generationConfig: { temperature },
-        }
-        parseChunk = (data) => {
-          const candidates = data.candidates
-          if (!candidates?.[0]) return ''
-          const parts = candidates[0].content?.parts
-          return parts?.map(p => p.text).join('') || ''
-        }
-      } else {
-        url = api.url
-        body = {
-          model: api.model,
-          messages: [
-            { role: 'system', content: prompt },
-            { role: 'user', content: text },
-          ],
-          temperature,
-          stream: true,
-        }
-        parseChunk = (data) => {
-          return data.choices?.[0]?.delta?.content || data.choices?.[0]?.text || ''
-        }
+      const body = {
+        model: api.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: text },
+        ],
+        temperature,
+        stream: true,
       }
 
-      const response = await fetch(url, {
+      const response = await fetch(api.url, {
         method: 'POST',
-        headers: api.provider === 'gemini'
-          ? { 'Content-Type': 'application/json' }
-          : { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.key}` },
         body: JSON.stringify(body),
       })
 
@@ -258,7 +227,7 @@ export const useWorkflowStore = defineStore('workflow', () => {
           if (data === '[DONE]') continue
           try {
             const parsed = JSON.parse(data)
-            const content = parseChunk(parsed)
+            const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.text || ''
             if (content && outputNode) {
               outputNode.data.output += content
             }

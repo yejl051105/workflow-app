@@ -164,9 +164,7 @@ onUnmounted(() => {
           @viewport-change="onViewportChange"
           class="vue-flow-instance"
         >
-          <Background :gap="20" :size="1" pattern-color="#2a2a50" />
-          <Controls show-fit-view-btn :show-zoom="true" position="bottom-right" />
-
+        
           <template #node-input="props">
             <InputNode v-bind="props" />
           </template>
